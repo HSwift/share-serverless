@@ -1,0 +1,22 @@
+{
+	"name": "share-serverless",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"packageManager": "pnpm@12.19.0",
+	"scripts": {
+		"build": "pnpm -r build",
+		"dev": "pnpm --parallel --filter @share/api --filter @share/console dev",
+		"dev:api": "pnpm --filter @share/api dev",
+		"dev:console": "pnpm --filter @share/console dev",
+		"typecheck": "pnpm -r typecheck",
+		"test": "pnpm test:deploy && pnpm -r test",
+		"test:deploy": "node --test scripts/test/*.test.mjs",
+		"check": "pnpm typecheck && pnpm test && pnpm build && pnpm --filter @share/console cf:dry-run",
+		"cf:typegen": "pnpm -r --if-present cf:typegen",
+		"db:migrate:local": "pnpm --filter @share/api db:migrate:local",
+		"secrets:local": "node scripts/init-local-secrets.mjs",
+		"cf:render": "node scripts/render-cloudflare-config.mjs",
+		"cf:deploy": "node scripts/deploy-cloudflare.mjs"
+	}
+}

@@ -1,0 +1,25 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "share-serverless-api",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-11-10",
+	"vars": {
+		"PUBLIC_BASE_URL": "https://api.invalid",
+		"MAX_UPLOAD_BYTES": "104857600",
+		"ACCESS_TEAM_DOMAIN": "",
+		"ACCESS_AUD": ""
+	},
+	"secrets": { "required": ["API_BEARER_TOKEN", "SHARE_SIGNING_KEY"] },
+	"d1_databases": [{
+		"binding": "DB",
+		"database_name": "share-serverless",
+		"preview_database_id": "replace-with-d1-database-id",
+		"migrations_dir": "migrations"
+	}],
+	"r2_buckets": [{ "binding": "FILES", "bucket_name": "share-serverless-files" }],
+	"durable_objects": { "bindings": [{ "name": "CLIPBOARD", "class_name": "ClipboardHub" }] },
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["ClipboardHub"] }],
+	"triggers": { "crons": ["43 3 * * *"] },
+	"observability": { "enabled": true },
+	"upload_source_maps": true
+}

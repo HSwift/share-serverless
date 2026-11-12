@@ -1,0 +1,2 @@
+API_BEARER_TOKEN=replace-with-a-random-token
+SHARE_SIGNING_KEY=replace-with-a-base64-encoded-32-byte-key
