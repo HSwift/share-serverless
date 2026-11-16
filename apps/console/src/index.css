@@ -1042,6 +1042,56 @@ svg {
 .composer-files-body .upload-list {
 	max-height: none;
 }
+.composer-curl-body {
+	flex: 1;
+	min-height: 0;
+	min-width: 0;
+	overflow-y: auto;
+	padding: 20px 0;
+}
+.curl-intro,
+.curl-caption,
+.curl-loading {
+	color: var(--muted);
+	font-size: 12px;
+	line-height: 1.7;
+}
+.curl-loading {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 24px;
+}
+.curl-example {
+	margin-top: 22px;
+}
+.curl-example-heading {
+	margin-bottom: 8px;
+	font-size: 12px;
+	font-weight: 500;
+}
+.curl-example pre {
+	margin: 0;
+	padding: 14px 16px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	background: #fafafa;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	font: 11px/1.8 var(--font-mono);
+}
+.curl-example code {
+	font: inherit;
+}
+.curl-caption {
+	margin-top: 8px;
+	font-size: 11px;
+}
+.curl-error {
+	margin-top: 16px;
+	color: #b42318;
+	font-size: 12px;
+}
 .compose-form .form-error {
 	margin: 0;
 	flex-shrink: 0;

@@ -1,4 +1,4 @@
-import type { ClipboardState, Content, FileDescriptor, ItemResult, LibraryPage, Limits, Share } from '../../../../shared/contracts';
+import type { CliConfig, ClipboardState, Content, FileDescriptor, ItemResult, LibraryPage, Limits, Share } from '../../../../shared/contracts';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const response = await fetch(`/api/v1${path}`, {
@@ -33,6 +33,7 @@ export const api = {
 	},
 	item: (id: string, signal?: AbortSignal) => request<ItemResult>(`/items/${encodeURIComponent(id)}`, { signal }),
 	config: () => request<Limits>('/config'),
+	cliConfig: (signal: AbortSignal) => request<CliConfig>('/config/cli', { signal, cache: 'no-store' }),
 	head: () => request<{ state: ClipboardState }>('/clipboards/default'),
 	create: (content: Content | { text: string }, mutationId: string = crypto.randomUUID()) =>
 		request<{ state: ClipboardState }>('/clipboards/default', {

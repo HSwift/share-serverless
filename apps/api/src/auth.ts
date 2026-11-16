@@ -57,8 +57,8 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
 	await next();
 };
 
-export const requireAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
+export const requireApiTokenOrAccess: MiddlewareHandler<AppEnv> = async (c, next) => {
 	if (c.get('principal').method === 'device')
-		throw new AppError(403, 'FORBIDDEN', 'Device administration requires the administrator credential');
+		throw new AppError(403, 'FORBIDDEN', 'This operation requires the API token or a Cloudflare Access session');
 	await next();
 };

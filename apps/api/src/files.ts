@@ -72,9 +72,7 @@ export async function downloadFile(c: AppContext, file: FileRow): Promise<Respon
 	return new Response(object.body, { status: range ? 206 : 200, headers });
 }
 
-export const files = new Hono<AppEnv>();
-
-files.post('/', async (c) => {
+export async function uploadFile(c: AppContext): Promise<FileRow> {
 	const name = string(c.req.query('name'), 'name', 255);
 	if (/[\\/]/.test(name) || name === '.' || name === '..')
 		throw new AppError(400, 'INVALID_NAME', 'File name must not contain path separators');
@@ -136,7 +134,7 @@ files.post('/', async (c) => {
 			stored = uploaded.value;
 		} else stored = await c.env.FILES.put(key, new Uint8Array(), options);
 		await c.env.DB.prepare("UPDATE files SET status = 'ready', etag = ? WHERE id = ? AND status = 'pending'").bind(stored.etag, id).run();
-		return c.json({ file: publicFile(await findFile(c.env.DB, id)) }, 201);
+		return await findFile(c.env.DB, id);
 	} catch (error) {
 		// Keep the row until scheduled cleanup, so a process crash never creates an untracked object.
 		await c.env.DB.prepare("UPDATE files SET status = 'deleted', deleted_at = ? WHERE id = ?")
@@ -146,7 +144,11 @@ files.post('/', async (c) => {
 		await c.env.FILES.delete(key).catch(() => {});
 		throw bodyError ?? error;
 	}
-});
+}
+
+export const files = new Hono<AppEnv>();
+
+files.post('/', async (c) => c.json({ file: publicFile(await uploadFile(c)) }, 201));
 
 files.get('/', async (c) => {
 	const page = pageQuery(new URL(c.req.url));

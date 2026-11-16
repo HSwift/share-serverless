@@ -87,7 +87,7 @@ Access 两项可以先同时不设置，此时仅支持 Bearer / 设备认证；
 
 | Runtime Secret | 用途 |
 | --- | --- |
-| `API_BEARER_TOKEN` | 管理员 API 令牌，建议随机 32 字节 |
+| `API_BEARER_TOKEN` | 系统 API token，建议随机 32 字节 |
 | `SHARE_SIGNING_KEY` | 分享链接 HMAC，必须是 base64 编码的 32 字节密钥 |
 
 可以直接在 API Worker 的 **Settings → Variables and Secrets** 创建，或交互式执行：
@@ -123,7 +123,7 @@ pnpm --filter @share/api exec wrangler secret put SHARE_SIGNING_KEY
 
 API 域名保持可达，避免 Access 登录拦截 `/s/*` 分享接收者和设备客户端。私有 `/api/v1/*` 仍由 API 校验签名 Access JWT 或 Bearer / 设备令牌。如果账户开启了 Protect all Workers，为 API 配置公开例外，并确认 Console 的域名应用优先生效。
 
-Console 不需要 Runtime Secrets、D1、R2 或管理员令牌。它保留请求中的 Access JWT，通过 Service Binding 转发给 API 验证。生产环境不使用本地 `.dev.vars`、`.env.local` 或 `LOCAL_API_BEARER_TOKEN`。
+Console 不需要 Runtime Secrets、D1 或 R2。它保留请求中的 Access JWT，通过 Service Binding 转发给 API 验证；新建弹窗的 curl 示例按需从 API 读取系统 API token。生产环境不使用本地 `.dev.vars`、`.env.local` 或 `LOCAL_API_BEARER_TOKEN`。
 
 ## 实际部署顺序与验证
 

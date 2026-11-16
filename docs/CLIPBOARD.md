@@ -50,7 +50,7 @@ wss://<api>/api/v1/clipboards/default/events?after=<最后已处理的 revision>
 Authorization: Bearer <device-token>
 ```
 
-连接使用普通 API 的认证方式。原生 daemon 可发送 Authorization header；后续同源 Console 可通过 Access 会话与 Service Binding 转发认证。URL 不接受管理员或设备令牌查询参数。
+连接使用普通 API 的认证方式。原生 daemon 可发送 Authorization header；后续同源 Console 可通过 Access 会话与 Service Binding 转发认证。URL 不接受 API token 或设备令牌查询参数。
 
 服务端消息只包含指针元数据，不包含剪贴板正文：
 

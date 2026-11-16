@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { createItem, createShare, request, upload, write, type StateResult, type UploadedFile } from './helpers';
+import { ADMIN, createItem, createShare, request, upload, write, type StateResult, type UploadedFile } from './helpers';
 import type { ClipboardState } from '../src/types';
 import { cleanupFiles } from '../src/files';
 
@@ -10,16 +10,30 @@ describe('authentication and device identity', () => {
 	it('exposes health but requires credentials for private API and WebSocket endpoints', async () => {
 		expect((await request('/api/health', { token: null })).status).toBe(200);
 		for (const path of [
+			'/api/v1/config/cli',
 			'/api/v1/items',
 			'/api/v1/files',
 			'/api/v1/devices',
 			'/api/v1/shares',
 			'/api/v1/clipboards/default',
+			'/api/v1/clipboards/default/content',
 			'/api/v1/clipboards/default/events',
 		]) {
 			expect((await request(path, { token: null })).status).toBe(401);
 			expect((await request(path, { token: 'wrong-token' })).status).toBe(401);
 		}
+	});
+	it('returns the runtime API origin and token to the owner without caching or exposing it to device credentials', async () => {
+		const response = await request('/api/v1/config/cli');
+		expect(response.status).toBe(200);
+		expect(response.headers.get('Cache-Control')).toBe('no-store');
+		expect(await response.json()).toEqual({ apiBaseUrl: new URL(env.PUBLIC_BASE_URL).origin, apiToken: ADMIN });
+		expect(await (await request('/api/v1/config')).text()).not.toContain(ADMIN);
+		const device = await request('/api/v1/devices', { method: 'POST', json: { name: 'CLI test', platform: 'linux' } });
+		const { token } = await device.json<{ token: string }>();
+		const denied = await request('/api/v1/config/cli', { token });
+		expect(denied.status).toBe(403);
+		expect(await denied.text()).not.toContain(ADMIN);
 	});
 	it('never trusts an unsigned Access assertion or a caller-supplied internal identity', async () => {
 		expect(
@@ -169,6 +183,50 @@ describe('immutable items and clipboard registers', () => {
 		expect(history.nextBefore).toBe(201);
 		expect((await write(name, a.id, 0, firstMutation)).status).toBe(410);
 		expect((await request(`/api/v1/clipboards/${name}/changes?after=203`)).status).toBe(409);
+	});
+});
+
+describe('direct clipboard uploads', () => {
+	it('accepts raw UTF-8 text and sets the clipboard with a server-generated mutation ID', async () => {
+		const name = channel();
+		const text = 'Hello "curl"\n中文 & $shell';
+		const response = await request(`/api/v1/clipboards/${name}/content`, {
+			method: 'POST', body: text, headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+		});
+		expect(response.status).toBe(200);
+		const { state } = await response.json<StateResult>();
+		expect(state.mutationId).toMatch(/^[0-9a-f-]{36}$/);
+		expect(state.revision).toBe(1);
+		expect(await (await request(`/api/v1/clipboards/${name}/text`)).text()).toBe(text);
+	});
+	it('streams a file into R2 and creates the current clipboard item in the same request', async () => {
+		const name = channel();
+		const bytes = new Uint8Array([0, 255, 128, 10, 0, 1]);
+		const response = await request(`/api/v1/clipboards/${name}/content?name=${encodeURIComponent('测试 file.bin')}`, {
+			method: 'POST', body: bytes, headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(bytes.byteLength) },
+		});
+		expect(response.status).toBe(200);
+		const { state } = await response.json<StateResult>();
+		const { item } = await (await request(`/api/v1/items/${state.itemId}`)).json<{ item: { content: { files: string[] } } }>();
+		const fileId = item.content.files[0];
+		expect((await (await request(`/api/v1/files/${fileId}`)).json<{ file: UploadedFile }>()).file.name).toBe('测试 file.bin');
+		expect(new Uint8Array(await (await request(`/api/v1/files/${fileId}/content`)).arrayBuffer())).toEqual(bytes);
+	});
+	it('rejects invalid text, oversized bodies and invalid file names without moving the clipboard', async () => {
+		const name = channel();
+		const item = await createItem('Keep this clipboard');
+		await write(name, item.id);
+		const path = `/api/v1/clipboards/${name}/content`;
+		const cases = [
+			{ path, body: new Uint8Array([255]), headers: { 'Content-Type': 'text/plain' }, status: 400 },
+			{ path, body: 'x'.repeat(65537), headers: { 'Content-Type': 'text/plain' }, status: 413 },
+			{ path, body: '{}', headers: { 'Content-Type': 'application/json' }, status: 415 },
+			{ path: `${path}?name=..%2Fbad.bin`, body: 'a', headers: { 'Content-Type': 'application/octet-stream' }, status: 400 },
+		];
+		for (const entry of cases) {
+			expect((await request(entry.path, { method: 'POST', body: entry.body, headers: entry.headers })).status).toBe(entry.status);
+		}
+		expect((await (await request(`/api/v1/clipboards/${name}`)).json<StateResult>()).state).toMatchObject({ itemId: item.id, revision: 1 });
 	});
 });
 

@@ -14,6 +14,7 @@ Save text, code, images, and files in one place. Find them in a minimal web cons
 - **Shareable snapshots.** Create links to a fixed item, set an expiry, and revoke access. Later clipboard updates do not change an existing share.
 - **Flexible clipboard sync.** Use HTTP for manual or on-demand updates, with optional WebSocket notifications for connected clients. Named channels, revision checks, and idempotent writes support custom clients.
 - **Personal access control.** Sign in to the console with Cloudflare Access. Register separate, revocable device tokens for API clients.
+- **Terminal uploads.** Open the new-item dialog's `curl` tab for one-line text and file uploads, with the API domain and your API token filled in automatically. Only `curl` is required.
 
 ## Screenshots
 
@@ -92,14 +93,14 @@ Keep these two **runtime secrets** in the API Worker's Variables and Secrets set
 
 | Secret | Value |
 | --- | --- |
-| `API_BEARER_TOKEN` | A random administrator token |
+| `API_BEARER_TOKEN` | A random system API token |
 | `SHARE_SIGNING_KEY` | A base64-encoded 32-byte key for signing share links |
 
 For a first build with no existing runtime secrets, generate two different values by running `openssl rand -base64 32` twice. Add them as **build secrets** named `RUNTIME_API_BEARER_TOKEN` and `RUNTIME_SHARE_SIGNING_KEY`. The deployment script installs them under their runtime names. After the first successful deployment, confirm the runtime secrets exist and remove both `RUNTIME_*` build secrets. Subsequent deployments preserve the installed secrets.
 
 Resource names are already declared in Wrangler. The deployment script finds or creates D1 and applies migrations before deploying; Wrangler provisions R2 and the Durable Object. No production database ID is required in the repository. The console's API Service Binding is also declared.
 
-Protect the **console hostname** with a Self-hosted Access application and an allow policy for your account. Use hostname-based Access to support WebSockets. Keep the API hostname reachable for device clients and public shares. The console needs no administrator token or separate runtime secrets.
+Protect the **console hostname** with a Self-hosted Access application and an allow policy for your account. Use hostname-based Access to support WebSockets. Keep the API hostname reachable for device clients and public shares. The console reads the API token on demand through the API for its curl examples and needs no separate runtime secrets.
 
 See the [deployment guide](docs/DEPLOYMENT.md) for configuration ownership, token permissions, custom domains, and verification. Keep non-production branch builds disabled until separate resources are configured.
 
@@ -111,6 +112,7 @@ pnpm test:deploy  # Deployment orchestration tests with simulated CLI commands
 pnpm cf:typegen   # Regenerate types after changing Wrangler bindings
 
 # Browser tests against isolated local services and storage
+# Terminal command checks also require curl on PATH.
 pnpm --filter @share/console exec playwright install chromium
 pnpm --filter @share/console test:e2e
 ```

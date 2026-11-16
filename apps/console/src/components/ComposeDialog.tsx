@@ -4,6 +4,7 @@ import type { Content, FileDescriptor, Limits } from '../../../../shared/contrac
 import { api } from '../lib/api';
 import { formatBytes, languages, rasterTypes, textContent, type Language } from '../lib/content';
 import { Modal } from './Dialogs';
+import { CurlExamples } from './CurlExamples';
 
 export interface ComposerDraft {
 	text?: string;
@@ -53,7 +54,7 @@ function ComposerForm({
 }) {
 	const [text, setText] = useState(draft.text ?? '');
 	const [files, setFiles] = useState<File[]>(draft.files ?? []);
-	const [tab, setTab] = useState<'text' | 'files'>(draft.files?.length ? 'files' : 'text');
+	const [tab, setTab] = useState<'text' | 'files' | 'curl'>(draft.files?.length ? 'files' : 'text');
 	const [language, setLanguage] = useState<Language>('text');
 	const [progress, setProgress] = useState('');
 	const [error, setError] = useState('');
@@ -81,7 +82,7 @@ function ComposerForm({
 	}
 	async function save(event: FormEvent) {
 		event.preventDefault();
-		if (busy) return;
+		if (busy || tab === 'curl') return;
 		setBusy(true);
 		setError('');
 		try {
@@ -162,6 +163,9 @@ function ComposerForm({
 					<button type="button" role="tab" aria-selected={tab === 'files'} onClick={() => setTab('files')} disabled={busy}>
 						Files
 					</button>
+					<button type="button" role="tab" aria-selected={tab === 'curl'} onClick={() => setTab('curl')} disabled={busy}>
+						curl
+					</button>
 				</div>
 				{tab === 'text' && (
 					<select
@@ -195,6 +199,8 @@ function ComposerForm({
 						spellCheck={false}
 					/>
 				</div>
+			) : tab === 'curl' ? (
+				<CurlExamples />
 			) : (
 				<div className="composer-files-body">
 					<input
@@ -245,12 +251,14 @@ function ComposerForm({
 					{busy ? progress || 'Preparing…' : ''}
 				</span>
 				<button type="button" className="button secondary" onClick={onCancel} disabled={busy}>
-					Cancel
+					{tab === 'curl' ? 'Done' : 'Cancel'}
 				</button>
-				<button type="submit" className="button primary" disabled={busy}>
-					{busy && <LoaderCircle className="spin" size={14} />}
-					{busy ? 'Saving…' : 'Save item'}
-				</button>
+				{tab !== 'curl' && (
+					<button type="submit" className="button primary" disabled={busy}>
+						{busy && <LoaderCircle className="spin" size={14} />}
+						{busy ? 'Saving…' : 'Save item'}
+					</button>
+				)}
 			</div>
 		</form>
 	);

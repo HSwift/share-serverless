@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { AppEnv, DeviceRow } from './types';
-import { requireAdmin } from './auth';
+import { requireApiTokenOrAccess } from './auth';
 import { AppError, readJson, string, uuid } from './http';
 import { randomToken, sha256 } from './crypto';
 
@@ -27,7 +27,7 @@ export function publicDevice(row: DeviceRow) {
 }
 
 export const devices = new Hono<AppEnv>();
-devices.use('*', requireAdmin);
+devices.use('*', requireApiTokenOrAccess);
 devices.get('/', async (c) => {
 	const result = await c.env.DB.prepare('SELECT * FROM devices ORDER BY created_at DESC LIMIT 200').all<DeviceRow>();
 	return c.json({ devices: result.results.map(publicDevice) });

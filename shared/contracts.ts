@@ -49,6 +49,10 @@ export interface Limits {
 	maxInlineBytes: number;
 	maxFiles: number;
 }
+export interface CliConfig {
+	apiBaseUrl: string;
+	apiToken: string;
+}
 export interface Share {
 	id: string;
 	itemId: string;

@@ -2,7 +2,7 @@
 
 私有 API 前缀为 `/api/v1`。除 `/api/health` 和 `/s/*` 之外，所有接口要求 `Authorization: Bearer <token>`，或验证通过的 Cloudflare Access JWT。
 
-管理员令牌存放在运行时 Secret `API_BEARER_TOKEN`。管理员可注册设备，获得一次性返回的 `dev_...` 设备令牌；D1 仅存设备令牌哈希。设备令牌可使用全部内容、文件、分享和同步接口，但不能管理设备。`capabilities` 是客户端能力声明，不是授权范围。
+系统 API token 存放在运行时 Secret `API_BEARER_TOKEN`。通过 API token 或 Access 会话可注册设备，获得一次性返回的 `dev_...` 设备令牌；D1 仅存设备令牌哈希。设备令牌可使用全部内容、文件、分享和同步接口，但不能管理设备或读取系统 API token。`capabilities` 是客户端能力声明，不是授权范围。
 
 Console 通过 Service Binding 转发原始 Request，由 API 再校验 `Cf-Access-Jwt-Assertion` 的签名、issuer、audience 与有效期。只保护 Console 域名；不要把公开分享路径放在要求登录的 Access 应用后面。
 
@@ -12,9 +12,11 @@ Console 通过 Service Binding 转发原始 Request，由 API 再校验 `Cf-Acce
 | ------ | ----------------------------------------------- | ---------------------------------------- |
 | GET    | `/api/health`                                   | 公开健康检查                             |
 | GET    | `/api/v1/me`                                    | 当前认证方式与设备身份                   |
-| POST   | `/api/v1/devices`                               | 管理员注册设备，返回设备令牌             |
-| GET    | `/api/v1/devices`                               | 管理员列出设备，最多 200 条              |
-| DELETE | `/api/v1/devices/:id`                           | 管理员撤销设备，并关闭它的现有 WebSocket |
+| GET    | `/api/v1/config`                                | 上传与行内内容限制                       |
+| GET    | `/api/v1/config/cli`                            | 读取命令使用的 API 地址与 token          |
+| POST   | `/api/v1/devices`                               | 注册设备，返回设备令牌                   |
+| GET    | `/api/v1/devices`                               | 列出设备，最多 200 条                    |
+| DELETE | `/api/v1/devices/:id`                           | 撤销设备，并关闭它的现有 WebSocket       |
 | POST   | `/api/v1/files?name=...&size=...`               | 原始二进制流上传；返回不可变文件 ID      |
 | GET    | `/api/v1/files`                                 | 文件列表                                 |
 | GET    | `/api/v1/files/:id`                             | 文件元数据                               |
@@ -27,6 +29,7 @@ Console 通过 Service Binding 转发原始 Request，由 API 再校验 `Cf-Acce
 | GET    | `/api/v1/clipboards/:channel`                   | 当前指针，支持 ETag / If-None-Match      |
 | PUT    | `/api/v1/clipboards/:channel`                   | 把指针设为指定条目，或设为 null          |
 | POST   | `/api/v1/clipboards/:channel`                   | 一次请求创建内容条目并更新指针           |
+| POST   | `/api/v1/clipboards/:channel/content`           | 原始文本或文件上传，并设为当前条目       |
 | GET    | `/api/v1/clipboards/:channel/text`              | 读取当前条目的纯文本；空指针返回 204     |
 | GET    | `/api/v1/clipboards/:channel/history`           | 最近 200 次指针变更中的历史              |
 | GET    | `/api/v1/clipboards/:channel/changes?after=0`   | 按版本升序补取变更                       |
@@ -43,6 +46,8 @@ Console 通过 Service Binding 转发原始 Request，由 API 再校验 `Cf-Acce
 `GET /api/v1/items` 还支持 `q`（最多 200 字符，按字面量匹配文本和附件文件名）、`type=all|text|image|files`、`sort=newest|oldest`、`since=<ISO 时间>`。筛选可组合，翻页时应保留同一组参数。图片条目也属于文件筛选；含文本和附件的条目可同时匹配对应筛选。返回 `total` 是全部匹配数量；条目包含 `title`、`preview`、`kind`、`size`、`fileDetails` 供列表展示。删除的文件描述为 `available:false`，不改变条目 ID。`GET /api/v1/items/:id` 返回 `{ item, files }`。
 
 `GET /api/v1/config` 需要认证，返回 Console 使用的 `maxUploadBytes`、`maxInlineBytes` 和 `maxFiles`。查询目前使用 D1 JSON/字符串扫描，适合个人库；数据量增大后可迁移为专用全文索引。
+
+`GET /api/v1/config/cli` 使用系统 API token 或通过验证的 Access 会话认证，返回 `{ apiBaseUrl, apiToken }`。地址取自部署时自动识别或显式配置的 `PUBLIC_BASE_URL`，token 是同一个运行时 `API_BEARER_TOKEN`，用于新建弹窗中的 curl 命令。响应设置 `Cache-Control: no-store`；设备令牌访问返回 403。
 
 ## 内容结构
 
@@ -107,6 +112,20 @@ curl -X POST 'http://localhost:8787/api/v1/files?name=photo.png' \
 
 ## 剪贴板写入
 
+终端可用一行 curl 直接写入，不依赖 jq。以下域名仅为示例；Console 的 `curl` 标签会自动填入部署后的 API 域名和实际 API token：
+
+```bash
+curl --fail-with-body 'https://api.example.com/api/v1/clipboards/default/content' -H "Authorization: Bearer $API_BEARER_TOKEN" -H 'Content-Type: text/plain' --data-raw 'Hello from curl'
+```
+
+提供 `name` 查询参数时按原始文件流上传，复用文件接口的长度校验与限制，完成后创建条目并设为当前内容：
+
+```bash
+curl --fail-with-body 'https://api.example.com/api/v1/clipboards/default/content?name=example.txt' -H "Authorization: Bearer $API_BEARER_TOKEN" -H 'Content-Type: application/octet-stream' --data-binary '@./example.txt'
+```
+
+修改文件时同时替换 URL 中的文件名和 `@` 后的路径，URL 文件名需编码。文本使用 `text/plain` 和 UTF-8，仍受 64 KiB 行内限制。该便捷接口由服务端生成 `mutationId`，每次请求表示一次新写入；需要重试幂等或版本检查时，使用下面的 JSON 接口。
+
 两步写入适合复用已有内容：
 
 ```http
@@ -163,7 +182,7 @@ Content-Type: application/json
 | 状态      | 常见 code                           | 处理方式                                         |
 | --------- | ----------------------------------- | ------------------------------------------------ |
 | 400       | `INVALID_INPUT`, `INVALID_CONTENT`  | 修正参数                                         |
-| 401 / 403 | `UNAUTHORIZED`, `FORBIDDEN`         | 检查凭证与管理员权限                             |
+| 401 / 403 | `UNAUTHORIZED`, `FORBIDDEN`         | 检查 API token、Access 会话或设备令牌             |
 | 406       | `FORMAT_UNAVAILABLE`                | 选择条目实际具备的 MIME 类型                     |
 | 409       | `REVISION_CONFLICT`                 | 拉取当前指针，保留本地待同步项并决定冲突处理     |
 | 409       | `MUTATION_REUSED`                   | 不要把同一幂等键用于不同请求                     |
@@ -171,6 +190,7 @@ Content-Type: application/json
 | 410       | `MUTATION_EXPIRED`                  | 原请求已执行但结果超出历史窗口，重新读取当前状态 |
 | 410       | `SHARE_EXPIRED`, `FILE_UNAVAILABLE` | 分享或文件已不可用                               |
 | 411 / 413 | `SIZE_REQUIRED`, `FILE_TOO_LARGE`   | 提供长度或减小上传                               |
+| 415       | `UNSUPPORTED_MEDIA_TYPE`            | 文本使用 text/plain，文件提供 name 查询参数       |
 | 400       | `UPLOAD_INCOMPLETE`                 | 上传中断或实际字节数与声明不符，重新上传         |
 | 416       | `INVALID_RANGE`                     | 调整下载范围                                     |
 
