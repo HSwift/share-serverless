@@ -23,7 +23,7 @@ function fixture(t) {
 	const api = join(root, 'apps/api');
 	mkdirSync(api, { recursive: true });
 	mkdirSync(join(root, 'scripts'));
-	for (const name of ['render-cloudflare-config.mjs', 'deploy-cloudflare.mjs'])
+	for (const name of ['render-cloudflare-config.mjs', 'deploy-cloudflare.mjs', 'cloudflare-origin.mjs'])
 		copyFileSync(new URL(`../${name}`, import.meta.url), join(root, 'scripts', name));
 	const template = join(api, 'wrangler.jsonc');
 	const source = JSON.parse(readFileSync(new URL('../../apps/api/wrangler.jsonc', import.meta.url), 'utf8'));
@@ -97,6 +97,7 @@ test('runtime configuration comes from Wrangler, not similarly named build envir
 	const configText = readFileSync(f.config, 'utf8');
 	const config = JSON.parse(configText);
 	assert.deepEqual(config.vars, { ...runtimeVars, PUBLIC_BASE_URL: 'https://share-api.example.com' });
+	assert.equal(config.keep_vars, true);
 	assert.equal(config.d1_databases[0].database_id, undefined);
 	assert.equal(config.d1_databases[0].preview_database_id, undefined);
 	assert.equal(config.r2_buckets[0].bucket_name, 'share-serverless-files');
@@ -110,6 +111,23 @@ test('runtime configuration comes from Wrangler, not similarly named build envir
 	}
 	assert.equal(statSync(f.config).mode & 0o777, 0o600);
 	assert.equal(statSync(f.secrets).mode & 0o777, 0o600);
+});
+
+test('template defaults preserve Dashboard runtime configuration on subsequent builds', (t) => {
+	const f = fixture(t);
+	f.configure((c) => {
+		c.vars = {
+			PUBLIC_BASE_URL: 'https://api.invalid',
+			MAX_UPLOAD_BYTES: '104857600',
+			ACCESS_TEAM_DOMAIN: '',
+			ACCESS_AUD: '',
+		};
+	});
+	assert.equal(f.run('render').status, 0);
+	const config = JSON.parse(readFileSync(f.config, 'utf8'));
+	assert.equal(config.keep_vars, true);
+	assert.deepEqual(config.vars, { MAX_UPLOAD_BYTES: '104857600' });
+	assert.equal(existsSync(f.secrets), false);
 });
 
 test('ordinary render discards stale bootstrap payloads so later deploys cannot reset secrets', (t) => {
@@ -194,6 +212,18 @@ test('an explicit database ID skips lookup and creation', (t) => {
 	assert.equal(f.run('deploy').status, 0);
 	assert.equal(f.calls().length, 2);
 	assert.equal(f.calls()[0].args[3], 'migrations');
+	cleaned(f);
+});
+
+test('domain discovery failure stops before migrations and removes bootstrap payloads', (t) => {
+	const f = fixture(t);
+	f.configure((c) => delete c.vars.PUBLIC_BASE_URL);
+	assert.equal(f.run('render', bootstrap).status, 0);
+	const result = f.run('deploy', { TEST_FAIL_COMMAND: 'auth' });
+	assert.notEqual(result.status, 0);
+	assert.match(result.stderr, /Unable to retrieve Wrangler credentials/);
+	assert.deepEqual(f.calls().map((call) => call.args[2]), ['d1', 'auth']);
+	for (const value of Object.values(bootstrap)) assert.equal(`${result.stdout}${result.stderr}`.includes(value), false);
 	cleaned(f);
 });
 

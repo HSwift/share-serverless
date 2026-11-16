@@ -34,13 +34,20 @@ try {
 	if (database.database_id && !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(database.database_id))
 		throw new Error('DB database_id must be a UUID when provided');
 	delete database.preview_database_id;
-	config.vars.PUBLIC_BASE_URL = https('PUBLIC_BASE_URL', config.vars.PUBLIC_BASE_URL);
+	// Account-specific runtime values can stay in the Dashboard. Omit template
+	// defaults so keep_vars preserves the installed values on subsequent builds.
+	if (!config.vars.PUBLIC_BASE_URL || config.vars.PUBLIC_BASE_URL === 'https://api.invalid')
+		delete config.vars.PUBLIC_BASE_URL;
+	else config.vars.PUBLIC_BASE_URL = https('PUBLIC_BASE_URL', config.vars.PUBLIC_BASE_URL);
 	const teamDomain = config.vars.ACCESS_TEAM_DOMAIN?.trim();
 	const audience = config.vars.ACCESS_AUD?.trim();
 	if (teamDomain || audience) {
 		if (!teamDomain || !audience) throw new Error('ACCESS_TEAM_DOMAIN and ACCESS_AUD must be configured together in wrangler.jsonc vars');
 		config.vars.ACCESS_TEAM_DOMAIN = https('ACCESS_TEAM_DOMAIN', teamDomain);
 		config.vars.ACCESS_AUD = audience;
+	} else {
+		delete config.vars.ACCESS_TEAM_DOMAIN;
+		delete config.vars.ACCESS_AUD;
 	}
 	const size = Number(config.vars.MAX_UPLOAD_BYTES);
 	if (!Number.isSafeInteger(size) || size < 1) throw new Error('MAX_UPLOAD_BYTES must be a positive integer in wrangler.jsonc vars');

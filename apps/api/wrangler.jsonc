@@ -3,6 +3,7 @@
 	"name": "share-serverless-api",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-11-10",
+	"keep_vars": true,
 	"vars": {
 		"PUBLIC_BASE_URL": "https://api.invalid",
 		"MAX_UPLOAD_BYTES": "104857600",

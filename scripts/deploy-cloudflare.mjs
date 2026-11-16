@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { resolvePublicOrigin } from './cloudflare-origin.mjs';
 
 const cwd = fileURLToPath(new URL('../apps/api/', import.meta.url));
 const config = new URL('../apps/api/wrangler.generated.jsonc', import.meta.url);
@@ -41,6 +42,11 @@ try {
 			]);
 		}
 	}
+	// D1 creation can update the temporary file. Keep those changes while adding
+	// the origin discovered from the API Worker's bindings, never the Console host.
+	const ready = JSON.parse(readFileSync(config, 'utf8'));
+	ready.vars.PUBLIC_BASE_URL = await resolvePublicOrigin(ready, run);
+	writeFileSync(config, `${JSON.stringify(ready, null, '\t')}\n`, { mode: 0o600 });
 	await run(['d1', 'migrations', 'apply', 'DB', '--remote', '--config', 'wrangler.generated.jsonc']);
 	const deployArgs = ['deploy', '--config', 'wrangler.generated.jsonc'];
 	if (existsSync(secrets)) deployArgs.push('--secrets-file', '.deploy-secrets.generated.json');

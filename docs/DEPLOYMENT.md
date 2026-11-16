@@ -10,18 +10,18 @@
 | `PNPM_VERSION=12.19.0` | Builder | 同上；与根目录 `packageManager` 保持一致 |
 | `CLOUDFLARE_API_TOKEN` | Builder 部署凭据 | Workers Builds 选择的 API token；手工 CI 才需要自行注入该环境变量 |
 | `CLOUDFLARE_ACCOUNT_ID` | Builder 目标账户 | 必要时配置到构建环境，Worker 代码不读取 |
-| `PUBLIC_BASE_URL` | API Runtime 普通变量 | `apps/api/wrangler.jsonc` → `vars` |
-| `MAX_UPLOAD_BYTES` | API Runtime 普通变量 | 同上，默认 `104857600`，即 100 MiB |
-| `ACCESS_TEAM_DOMAIN` | API Runtime 普通变量 | 同上 |
+| `PUBLIC_BASE_URL` | API Runtime 普通变量 | 部署时从 API 绑定域名自动生成；多个域名时在 API Runtime 选择 |
+| `MAX_UPLOAD_BYTES` | API Runtime 普通变量 | `apps/api/wrangler.jsonc` → `vars`，默认 `104857600`，即 100 MiB |
+| `ACCESS_TEAM_DOMAIN` | API Runtime 普通变量 | API Worker → Settings → Variables and Secrets，类型 Text |
 | `ACCESS_AUD` | API Runtime 普通变量 | 同上 |
 | `API_BEARER_TOKEN` | API Runtime Secret | API Worker → Settings → Variables and Secrets，类型 Secret |
 | `SHARE_SIGNING_KEY` | API Runtime Secret | 同上 |
 | `DB`、`FILES`、`CLIPBOARD` | Runtime 资源绑定 | `apps/api/wrangler.jsonc` 的 D1、R2、Durable Object 配置 |
 | `API`、`ASSETS` | Console Runtime 资源绑定 | `apps/console/wrangler.jsonc` 的 Service Binding 和 Static Assets |
 
-`PUBLIC_BASE_URL`、Access 标识和上传限制属于运行时配置，生成脚本从 Wrangler 的 `vars` 读取，不从构建进程的同名环境变量读取。D1 / R2 的名称也是资源声明，不是环境变量。没有必填的 `D1_DATABASE_ID` 或 `R2_BUCKET_NAME` Build Variable。
+`PUBLIC_BASE_URL`、Access 标识和上传限制属于运行时配置，不从构建进程的同名环境变量读取。生成脚本省略仓库里的占位 URL 和空 Access 值；部署脚本从 Cloudflare API 读取 API Worker 绑定的域名，自动生成分享地址，并通过 `keep_vars` 保留 Dashboard 中的其他线上变量。域名只写入临时配置和 Runtime，避免在开源仓库写入部署标识。D1 / R2 的名称也是资源声明，不是环境变量。没有必填的 `D1_DATABASE_ID` 或 `R2_BUCKET_NAME` Build Variable。
 
-运行时普通变量以仓库里的 Wrangler 配置为准；修改 Dashboard 的同名普通变量，下次部署会被配置覆盖。密钥不写入 `vars` 或仓库。Secrets 会在普通部署中保留。[Wrangler 配置来源规则](https://developers.cloudflare.com/workers/wrangler/configuration/#source-of-truth)
+若在 Wrangler 的 `vars` 中填写真实值，它会覆盖 Dashboard 同名普通变量；默认声明的 `MAX_UPLOAD_BYTES` 也遵循该规则。模板的 `PUBLIC_BASE_URL=https://api.invalid` 和空 Access 值不会进入生产配置。密钥不写入 `vars` 或仓库。Secrets 会在普通部署中保留。[Wrangler 配置来源规则](https://developers.cloudflare.com/workers/wrangler/configuration/#source-of-truth)
 
 ## 两个 Workers Builds
 
@@ -62,20 +62,22 @@ R2 保持私有，无需公开 bucket 或配置 S3 凭据，账户中需要启�
 
 ## 填写 API Runtime 普通变量
 
-在 `apps/api/wrangler.jsonc` 的 `vars` 中配置：
+在 API Worker 的 **Settings → Variables and Secrets** 中添加以下两个 **Text** 变量：
 
 ```json
 {
-  "PUBLIC_BASE_URL": "https://share-api.example.com",
-  "MAX_UPLOAD_BYTES": "104857600",
   "ACCESS_TEAM_DOMAIN": "https://your-team.cloudflareaccess.com",
   "ACCESS_AUD": "your-console-application-aud"
 }
 ```
 
-这些都是非敏感运行时配置，可以提交到仓库，无需添加到 Build Variables。
+上传限制在 `apps/api/wrangler.jsonc` 的 `vars.MAX_UPLOAD_BYTES` 中设置，默认 `104857600`。这些都无需添加到 Build Variables。如果愿意公开部署标识，也可以在 Wrangler 的 `vars` 中填写真实 URL 和 Access 值；它们会覆盖 Dashboard 的同名值。
 
-`PUBLIC_BASE_URL` 填 API 的公开 HTTPS origin，用于生成分享链接，不能填 Console 地址或带路径。默认的 `https://api.invalid` 仅用于完成初始部署，启用分享前需要替换。Access 两项可以先同时留空，此时仅支持 Bearer / 设备认证；启用 Console 前一起填写真实值。
+分享链接使用的 `PUBLIC_BASE_URL` 自动适配 API Worker 的 Custom Domain；首次尚未绑定域名时使用 `workers.dev` 地址。绑定或更换域名后重新部署即可更新，无需把域名写入 Git。多个 API Custom Domain 时，在 Runtime 的 `PUBLIC_BASE_URL` 中指定其中一个；只有一个域名时优先使用该域名。通过普通 Worker Route 发布的 API 可以在 Runtime 保留明确的地址。Wrangler 中显式填写的 `PUBLIC_BASE_URL` 优先级最高，必须是 API 的公开 HTTPS origin，不能填 Console 地址或带路径。
+
+自动发现使用 Builder 已有的 Wrangler 部署凭据访问 Cloudflare 管理 API，不向 Worker 注入 Cloudflare API Token。Console 经 Service Binding 转发时保留 Console 请求 URL，因此公开分享使用部署时确定的 API 地址，不依赖浏览器请求的 Host。
+
+Access 两项可以先同时不设置，此时仅支持 Bearer / 设备认证；启用 Console 前一起填写真实值。
 
 本地 `pnpm dev` 用 CLI 覆盖 `PUBLIC_BASE_URL` 为本地 API 地址，不修改生产 `vars`。D1 的 `preview_database_id` 仅保留已有本地存储的标识，生成生产配置时移除，不是需要填写的生产 ID。
 
@@ -115,7 +117,7 @@ pnpm --filter @share/api exec wrangler secret put SHARE_SIGNING_KEY
 - `https://share.example.com`：Console，通过 Access 登录。
 - `https://share-api.example.com`：API，供设备和公开分享访问。
 
-也可以先使用对应的 `workers.dev` 地址。在 **Zero Trust → Access → Applications** 创建 **Self-hosted** 应用，保护整个 Console 域名，Allow 策略填写自己的邮箱。把该应用的 Team Domain 和 **Application Audience (AUD) Tag** 写入 API 的 `vars`，再构建 API。
+也可以先使用对应的 `workers.dev` 地址。在 **Zero Trust → Access → Applications** 创建 **Self-hosted** 应用，保护整个 Console 域名，Allow 策略填写自己的邮箱。把该应用的 Team Domain 和 **Application Audience (AUD) Tag** 配置为 API Worker 的 Runtime Text 变量，部署设置后生效。
 
 使用按域名保护的 Access。Cloudflare 当前的 Worker 级 Access 不支持 WebSocket，升级请求返回 403，因此 Console 不使用 “Protect this Worker behind Access”。保留的 Console `workers.dev` 地址和其他入口也加入同一个域名应用。[官方限制](https://developers.cloudflare.com/workers/configuration/cloudflare-access/#protect-one-worker)
 
@@ -125,10 +127,10 @@ Console 不需要 Runtime Secrets、D1、R2 或管理员令牌。它保留请求
 
 ## 实际部署顺序与验证
 
-1. 修改 Wrangler 中的资源声明和运行时 `vars`。
+1. 确认 Wrangler 中的资源声明；在 API Worker 的 Runtime 设置中填写 Access 值。首次 Worker 尚不存在时可在首次部署成功后填写。自定义域名在 Dashboard 绑定后重新部署，分享地址自动识别。
 2. 配置 API Builds 的工具版本、部署权限，以及需要时的首次初始化 Secrets。
 3. API Build 生成临时配置并执行类型检查。
-4. API Deploy 解析 / 创建 D1 → 执行远程 migrations → 部署 API，由 Wrangler 创建 R2 / DO、配置 Cron。
+4. API Deploy 解析 / 创建 D1 → 自动确定 API 的公开域名 → 执行远程 migrations → 部署 API，由 Wrangler 创建 R2 / DO、配置 Cron。
 5. 部署脚本成功或失败后清理临时配置与 Secrets 文件。类型检查失败时部署脚本尚未执行，临时文件随构建容器销毁。
 6. 首次成功后删除 `RUNTIME_*` Build Secrets，再构建确认。
 7. 部署 Console，绑定域名，验证 Access 登录。
